@@ -30,6 +30,7 @@ void ch_isr () {
 }
 
 void chbsp_board_init(ch_group_t *grp_ptr) {
+  Serial.println("Init board called");
 	grp_ptr->num_ports = CHBSP_MAX_DEVICES; // DEFINE
 	grp_ptr->num_i2c_buses = CHBSP_NUM_I2C_BUSES; // DEFINE
 	grp_ptr->rtc_cal_pulse_ms = CHBSP_RTC_CAL_PULSE_MS; // DEFINE
@@ -48,18 +49,22 @@ void chbsp_board_init(ch_group_t *grp_ptr) {
 }
 
 void chbsp_reset_assert (void) {
+  Serial.println ("Reset asserted");
 	digitalWrite (CH_RST, LOW);
 }
 
 void chbsp_reset_release (void) {
+  Serial.println ("Reset released");
 	digitalWrite (CH_RST, HIGH);
 }
 
 void chbsp_program_enable (ch_dev_t *dev_ptr) {
+  Serial.println ("Prog asserted");
 	digitalWrite (CH_PROG, HIGH);
 }
 
 void chbsp_program_disable (ch_dev_t *dev_ptr) {
+  Serial.println ("Prog disabled");
 	digitalWrite (CH_PROG, LOW);
 }
 
@@ -135,7 +140,9 @@ void chbsp_delay_ms (uint32_t ms) {
 }
 
 int chbsp_i2c_init (void) {
+  Serial.println ("I2c init");
 	Wire.begin ();
+  Wire.setClock(5000);
 	return 0;
 }
 
@@ -147,6 +154,7 @@ uint8_t chbsp_i2c_get_info(ch_group_t *grp_ptr, uint8_t dev_num, ch_i2c_info_t *
 }
 
 int chbsp_i2c_write (ch_dev_t *dev_ptr, uint8_t *data, uint16_t num_bytes) {
+  Serial.println ("I2c write");
 	Wire.beginTransmission (ch_get_i2c_address (dev_ptr));
 	for (int i = 0; i < num_bytes; ++i) {
 		Wire.write (data[i]);
@@ -156,6 +164,7 @@ int chbsp_i2c_write (ch_dev_t *dev_ptr, uint8_t *data, uint16_t num_bytes) {
 }
 
 int chbsp_i2c_mem_write (ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint16_t num_bytes) {
+  Serial.println ("I2c mem write");
 	Wire.beginTransmission (ch_get_i2c_address (dev_ptr));
 	// Send header
 	Wire.write (mem_addr & 0xFF);
@@ -169,6 +178,7 @@ int chbsp_i2c_mem_write (ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, ui
 }
 
 int chbsp_i2c_read (ch_dev_t *dev_ptr, uint8_t *data, uint16_t num_bytes) {
+  Serial.println ("I2c read");
 	Wire.requestFrom (ch_get_i2c_address (dev_ptr), num_bytes);
 	int i = 0;
 	while (Wire.available () > 0) {
@@ -178,6 +188,7 @@ int chbsp_i2c_read (ch_dev_t *dev_ptr, uint8_t *data, uint16_t num_bytes) {
 }
 
 int chbsp_i2c_mem_read (ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uint16_t num_bytes) {
+  Serial.println ("I2c mem read");
 	Wire.beginTransmission (ch_get_i2c_address (dev_ptr));
 	Wire.write (mem_addr & 0xFF);
 	Wire.endTransmission ();
@@ -189,4 +200,5 @@ int chbsp_i2c_mem_read (ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t *data, uin
 
 void chbsp_i2c_reset (ch_dev_t *dev_ptr) {
 	// FIX (Or do nothing?)
+  Serial.println ("I2c reset");
 }

@@ -231,7 +231,7 @@ uint8_t ch101_gppc_set_frequency(ch_dev_t *dev_ptr, uint32_t target_freq_Hz) {
 
 	DEBUG_DCO_SEARCH(printf("# Port %u, dco0=%lu, dco1=%lu, dcoest=%u, freq=%lu, targ= %lu\n",
 	dev_ptr->io_index, dcoper[0], dcoper[1], dcoest, freq, target_freq_Hz);)
-	int32_t minerr = abs(freq - target_freq_Hz);
+	int32_t minerr = abs(int (freq - target_freq_Hz));
 	uint32_t minoff = 0;
 	//if the error is too high, search around the estimate for the best code
 	if (minerr > CH_DCO_SEARCH_THRESHOLD) {
@@ -240,8 +240,8 @@ uint8_t ch101_gppc_set_frequency(ch_dev_t *dev_ptr, uint32_t target_freq_Hz) {
 		int i;
 		for (i = -5; i < 6; i++) { //+/-5 DCO codes should be about +/-1500Hz
 			freq = ch101_gppc_set_new_dco_code(dev_ptr, dcoest + i);
-			if (abs(freq - target_freq_Hz) < minerr) {
-				minerr = abs(freq - target_freq_Hz);
+			if (abs(int (freq - target_freq_Hz)) < minerr) {
+				minerr = abs(int (freq - target_freq_Hz));
 				minoff = i;
 				DEBUG_DCO_SEARCH(printf("# *");)
 			}
