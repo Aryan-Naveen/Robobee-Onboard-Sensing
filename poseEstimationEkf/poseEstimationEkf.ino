@@ -1,12 +1,12 @@
 #include "Adafruit_VL53L1X.h"
-#include <LSM6DS3.h>
+#include <Arduino_LSM9DS1.h>
 #include <Wire.h>
 #include <elapsedMillis.h>
 #include "config.h"
 #include "matrix.h"
 #include "ekf.h"
 
-
+#define DEG_2_RAD (0.01745)
 
 /* ================================================= RLS Variables/function declaration ================================================= */
 float_prec  RLS_lambda = 0.999; /* Forgetting factor */
@@ -17,12 +17,26 @@ Matrix RLS_out(1,1);            /* Output data */
 Matrix RLS_gain(4,1);           /* RLS gain */
 uint32_t RLS_u32iterData = 0;   /* To track how much data we take */
 
+float_prec IMU_MAG_B0_data[3] = {cos(0), sin(0), 0.000000};
+Matrix IMU_MAG_B0(3, 1, IMU_MAG_B0_data);
+
+/* The hard-magnet bias */
+float_prec HARD_IRON_BIAS_data[3] = {8.832973, 7.243323, 23.95714};
+Matrix HARD_IRON_BIAS(3, 1, HARD_IRON_BIAS_data);
+
+
+/* --------------------------------------------------------------------------------------------------------- */
+float_prec IMU_2_TOF_data[4*4] =  {1,  0,  0,  0,
+                              0,  1,  0,  0,
+                              0,  0,  1,  0,
+                              0,  0,  0,  1};
+Matrix IMU_2_TOF(4, 4, IMU_2_TOF_data);
 
 /* ================================================= EKF Variables/function declaration ================================================= */
 /* EKF initialization constant */
 #define P_INIT      (10.)
 #define Q_INIT      (1e-6)
-#define R_INIT_ACC  (100/10.)
+#define R_INIT_ACC  (0.0015/10.)
 #define R_INIT_MAG  (0.0015/10.)
 /* P(k=0) variable --------------------------------------------------------------------------------------------------------- */
 float_prec EKF_PINIT_data[SS_X_LEN*SS_X_LEN] = {P_INIT, 0,      0,      0,
@@ -37,8 +51,8 @@ float_prec EKF_QINIT_data[SS_X_LEN*SS_X_LEN] = {Q_INIT, 0,      0,      0,
                                                 0,      0,      0,      Q_INIT};
 Matrix EKF_QINIT(SS_X_LEN, SS_X_LEN, EKF_QINIT_data);
 /* R constant -------------------------------------------------------------------------------------------------------------- */
-float_prec EKF_RINIT_data[SS_Z_LEN*SS_Z_LEN] = {R_INIT_ACC, 0,          0,
-                                                0,          R_INIT_ACC, 0,
+float_prec EKF_RINIT_data[SS_Z_LEN*SS_Z_LEN] = {R_INIT_ACC, 0,          0,        
+                                                0,          R_INIT_ACC, 0,        
                                                 0,          0,          R_INIT_ACC};
 
 Matrix EKF_RINIT(SS_Z_LEN, SS_Z_LEN, EKF_RINIT_data);
@@ -73,8 +87,7 @@ enum {
 
 #define XSHUT_PIN 3
 
-LSM6DS3 myIMU(I2C_MODE, 0x6A);    //I2C device address 0x6A
-float aX, aY, aZ, gX, gY, gZ;
+float aX, aY, aZ, gX, gY, gZ, mX, mY, mZ;
 int16_t distance = 0;
 Adafruit_VL53L1X vl53 = Adafruit_VL53L1X(XSHUT_PIN, IRQ_PIN);
 
@@ -106,9 +119,11 @@ void setup() {
   vl53.setTimingBudget(50);
   Serial.print(F("Timing budget (ms): "));
   Serial.println(vl53.getTimingBudget());
-  if (myIMU.begin() != 0) {
+  if (!IMU.begin()) {
     Serial.println("Device error");
+    delay(10);
   }
+
 
   /* RLS initialization ----------------------------------------- */
   RLS_theta.vSetToZero();
@@ -118,7 +133,7 @@ void setup() {
   /* EKF initialization ----------------------------------------- */
   /* x(k=0) = [1 0 0 0]' */
   quaternionData.vSetToZero();
-  quaternionData[0][0] = 1.0;
+  quaternionData[1][0] = 1.0;
   EKF_IMU.vReset(quaternionData, EKF_PINIT, EKF_QINIT, EKF_RINIT);
 
   snprintf(bufferTxSer, sizeof(bufferTxSer)-1, "EKF in Teensy 4.0 (%s)\r\n", (FPU_PRECISION == PRECISION_SINGLE)?"Float32":"Double64");
@@ -131,11 +146,13 @@ void loop() {
   // put your main code here, to run repeatedly:
   if (vl53.dataReady()) {
     distance = vl53.distance();
+    IMU.readAcceleration(aX, aY, aZ);
+    IMU.readGyroscope(gX, gY, gZ);
+    IMU.readMagneticField(mX, mY, mZ);
 
-    aX= myIMU.readFloatAccelX(); aY = myIMU.readFloatAccelY(); aZ = myIMU.readFloatAccelZ();
-    gX = myIMU.readFloatGyroX(); gY = myIMU.readFloatGyroY(); gZ = myIMU.readFloatGyroZ();
 
-    U[0][0] = gX; U[1][0] = gY; U[2][0] = gZ;
+    U[0][0] = gX*DEG_2_RAD; U[1][0] = gY*DEG_2_RAD; U[2][0] = gZ*DEG_2_RAD;
+    U[3][0] = mX; U[4][0] = mY; U[5][0] = mZ;
     Y[0][0] = aX; Y[1][0] = aY; Y[2][0] = aZ;
 
     // Normalize output vector
@@ -144,6 +161,8 @@ void loop() {
     Y[1][0] = Y[1][0]/_normY;
     Y[2][0] = Y[2][0]/_normY;
 
+
+
     if(!EKF_IMU.bUpdate(Y, U)) {
       quaternionData.vSetToZero();
       quaternionData[0][0] = 1.0;
@@ -151,15 +170,10 @@ void loop() {
       Serial.println("whoops");
     }
     quaternionData = EKF_IMU.GetX();
-
-    if(!(count % 100)){
-      Serial.print(aX, 3);
-      Serial.print(",");
-      Serial.print(aY, 3);
-      Serial.print(",");
-      Serial.print(aZ, 3);
-      Serial.print(",");
-      Serial.print(quaternionData[3][0], 3);
+    
+    if(count % 500){
+      recordData(U, Y, quaternionData);
+      Serial.print(computeAltitude(distance, quaternionData));
       Serial.println("");      
     }
     count ++;
@@ -179,6 +193,53 @@ void serialFloatPrint(float f) {
         Serial.print(c1);
         Serial.print(c2);
     }
+}
+
+Matrix quat2RotationMat(Matrix &X){
+  float_prec q0, q1, q2, q3;
+  q0 = X[0][0];
+  q1 = X[1][0];
+  q2 = X[2][0];
+  q3 = X[3][0];
+  float_prec rotation_data[4*4] = {q0*q0 + q1*q1 - q2*q2 - q3*q3,      2*(q1*q2+q0*q3),                2*(q1*q3-q0*q2),                0,
+                              2*(q1*q2-q0*q3),                    q0*q0 - q1*q1 + q2*q2 - q3*q3,  2*(q2*q3+q0*q1),                0,
+                              2*(q1*q3+q0*q2),                    2*(q2*q3-q0*q1),                q0*q0 - q1*q1 - q2*q2 + q3*q3,  0,
+                              0,                                  0,                              0,                              1};
+  Matrix rotation(4, 4, rotation_data);
+  return rotation;
+}
+
+void recordData(Matrix &U, Matrix &Y, Matrix &quaternion){
+  Matrix R = quat2RotationMat(quaternion);
+  float_prec sy = sqrt(R[0][0] * R[0][0] +  R[1][0] * R[1][0] );
+  Serial.print(U[0][0], 3);
+  Serial.print(" ");
+  Serial.print(U[1][0], 3);
+  Serial.print(" ");
+  Serial.print(U[2][0], 3);
+  Serial.print(" ");
+
+  
+  Serial.print(Y[0][0], 3);
+  Serial.print(" ");
+  Serial.print(Y[1][0], 3);
+  Serial.print(" ");
+  Serial.print(Y[2][0], 3);
+  Serial.print(" ");
+
+
+  Serial.print(atan2(R[2][1], R[2][2]), 3);
+  Serial.print(" ");
+  Serial.print(atan2(-R[2][0], sy), 3);
+  Serial.print(" ");
+  Serial.print(atan2(R[1][0], R[0][0]), 3);
+  Serial.print(" ");
+}
+
+float_prec computeAltitude(int16_t distance, Matrix &quat){
+  Matrix rotation_mat = quat2RotationMat(quat);
+  Matrix tof_mat = rotation_mat*IMU_2_TOF;
+  return tof_mat[2][2]*distance + tof_mat[2][3];
 }
 
 bool Main_bUpdateNonlinearX(Matrix &X_Next, Matrix &X, Matrix &U)
@@ -257,17 +318,17 @@ bool Main_bUpdateNonlinearY(Matrix &Y, Matrix &X, Matrix &U)
 
     Y[2][0] = (+(q0_2) -(q1_2) -(q2_2) +(q3_2)) * IMU_ACC_Z0;
 
-    // Y[3][0] = (+(q0_2)+(q1_2)-(q2_2)-(q3_2)) * IMU_MAG_B0[0][0]
-    //          +(2*(q1*q2+q0*q3)) * IMU_MAG_B0[1][0]
-    //          +(2*(q1*q3-q0*q2)) * IMU_MAG_B0[2][0];
-    //
-    // Y[4][0] = (2*(q1*q2-q0*q3)) * IMU_MAG_B0[0][0]
-    //          +(+(q0_2)-(q1_2)+(q2_2)-(q3_2)) * IMU_MAG_B0[1][0]
-    //          +(2*(q2*q3+q0*q1)) * IMU_MAG_B0[2][0];
-    //
-    // Y[5][0] = (2*(q1*q3+q0*q2)) * IMU_MAG_B0[0][0]
-    //          +(2*(q2*q3-q0*q1)) * IMU_MAG_B0[1][0]
-    //          +(+(q0_2)-(q1_2)-(q2_2)+(q3_2)) * IMU_MAG_B0[2][0];
+//     Y[3][0] = (+(q0_2)+(q1_2)-(q2_2)-(q3_2)) * IMU_MAG_B0[0][0]
+//              +(2*(q1*q2+q0*q3)) * IMU_MAG_B0[1][0]
+//              +(2*(q1*q3-q0*q2)) * IMU_MAG_B0[2][0];
+//
+//     Y[4][0] = (2*(q1*q2-q0*q3)) * IMU_MAG_B0[0][0]
+//              +(+(q0_2)-(q1_2)+(q2_2)-(q3_2)) * IMU_MAG_B0[1][0]
+//              +(2*(q2*q3+q0*q1)) * IMU_MAG_B0[2][0];
+//
+//     Y[5][0] = (2*(q1*q3+q0*q2)) * IMU_MAG_B0[0][0]
+//              +(2*(q2*q3-q0*q1)) * IMU_MAG_B0[1][0]
+//              +(+(q0_2)-(q1_2)-(q2_2)+(q3_2)) * IMU_MAG_B0[2][0];
     return true;
 }
 
@@ -320,30 +381,30 @@ bool Main_bCalcJacobianH(Matrix &H, Matrix &X, Matrix &U)
     H[0][0] = -2*q2 * IMU_ACC_Z0;
     H[1][0] = +2*q1 * IMU_ACC_Z0;
     H[2][0] = +2*q0 * IMU_ACC_Z0;
-    // H[3][0] =  2*q0*IMU_MAG_B0[0][0] + 2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
-    // H[4][0] = -2*q3*IMU_MAG_B0[0][0] + 2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
-    // H[5][0] =  2*q2*IMU_MAG_B0[0][0] - 2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
+//    H[3][0] =  2*q0*IMU_MAG_B0[0][0] + 2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
+//    H[4][0] = -2*q3*IMU_MAG_B0[0][0] + 2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
+//    H[5][0] =  2*q2*IMU_MAG_B0[0][0] - 2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
 
     H[0][1] = +2*q3 * IMU_ACC_Z0;
     H[1][1] = +2*q0 * IMU_ACC_Z0;
     H[2][1] = -2*q1 * IMU_ACC_Z0;
-    // H[3][1] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
-    // H[4][1] =  2*q2*IMU_MAG_B0[0][0]-2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
-    // H[5][1] =  2*q3*IMU_MAG_B0[0][0]-2*q0*IMU_MAG_B0[1][0] - 2*q1*IMU_MAG_B0[2][0];
+//    H[3][1] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+//    H[4][1] =  2*q2*IMU_MAG_B0[0][0]-2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
+//    H[5][1] =  2*q3*IMU_MAG_B0[0][0]-2*q0*IMU_MAG_B0[1][0] - 2*q1*IMU_MAG_B0[2][0];
 
     H[0][2] = -2*q0 * IMU_ACC_Z0;
     H[1][2] = +2*q3 * IMU_ACC_Z0;
     H[2][2] = -2*q2 * IMU_ACC_Z0;
-    // H[3][2] = -2*q2*IMU_MAG_B0[0][0]+2*q1*IMU_MAG_B0[1][0] - 2*q0*IMU_MAG_B0[2][0];
-    // H[4][2] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
-    // H[5][2] =  2*q0*IMU_MAG_B0[0][0]+2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
+//    H[3][2] = -2*q2*IMU_MAG_B0[0][0]+2*q1*IMU_MAG_B0[1][0] - 2*q0*IMU_MAG_B0[2][0];
+//    H[4][2] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+//    H[5][2] =  2*q0*IMU_MAG_B0[0][0]+2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
 
     H[0][3] = +2*q1 * IMU_ACC_Z0;
     H[1][3] = +2*q2 * IMU_ACC_Z0;
     H[2][3] = +2*q3 * IMU_ACC_Z0;
-    // H[3][3] = -2*q3*IMU_MAG_B0[0][0]+2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
-    // H[4][3] = -2*q0*IMU_MAG_B0[0][0]-2*q3*IMU_MAG_B0[1][0] + 2*q2*IMU_MAG_B0[2][0];
-    // H[5][3] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+//    H[3][3] = -2*q3*IMU_MAG_B0[0][0]+2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
+//    H[4][3] = -2*q0*IMU_MAG_B0[0][0]-2*q3*IMU_MAG_B0[1][0] + 2*q2*IMU_MAG_B0[2][0];
+//    H[5][3] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
 
     return true;
 }

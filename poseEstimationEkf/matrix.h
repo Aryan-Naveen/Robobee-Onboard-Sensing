@@ -1,53 +1,53 @@
 /************************************************************************************
- * Matrix Class 
+ * Matrix Class
  *  Contain the matrix class definition and operation.
- * 
+ *
  *  Notes:
  *    - Indexing start from 0, with accessing format matrix[row][column].
  *    - The matrix data is a 2 dimensional array, with structure:
  *      ->  0 <= i16row <= (MATRIX_MAXIMUM_SIZE-1)
  *      ->  0 <= i16col <= (MATRIX_MAXIMUM_SIZE-1)
- *      ->  f32data[MATRIX_MAXIMUM_SIZE][MATRIX_MAXIMUM_SIZE] is the memory 
+ *      ->  f32data[MATRIX_MAXIMUM_SIZE][MATRIX_MAXIMUM_SIZE] is the memory
  *           representation of the matrix. We only use the first i16row-th
  *           and first i16col-th memory for the matrix data. The rest is unused.
  *      See below at "Data structure of Matrix class" at private member class
  *       definition for more information!
- * 
+ *
  * Class Matrix Versioning:
  *    v0.8 (2020-03-26), {PNb}:
  *      - Change indexing from int32_t to int16_t.
  *      - Add way to initialize matrix with existing float_prec array.
  *      - Add enum InitZero.
- *      - Make temporary matrix initialization inside almost all method with 
+ *      - Make temporary matrix initialization inside almost all method with
  *          NoInitMatZero argument.
  *      - Remove the 1 index buffer reserve in bMatrixIsValid function.
- *      - Add bMatrixIsPositiveDefinite method to check the positive 
+ *      - Add bMatrixIsPositiveDefinite method to check the positive
  *          (semi)definiteness of a matrix.
- *      - Add GetDiagonalEntries method. 
+ *      - Add GetDiagonalEntries method.
  *      - Change SYSTEM_IMPLEMENTATION_EMBEDDED_NO_PRINT into
  *          SYSTEM_IMPLEMENTATION_EMBEDDED_CUSTOM, and make vPrint and
  *          vPrintFull as function declaration (the user must define that
- *          function somewhere). 
- * 
+ *          function somewhere).
+ *
  *    v0.7 (2020-02-23), {PNb}:
  *      - Make the matrix class interface in English (at long last, yay?).
- * 
- * 
+ *
+ *
  *** Documentation below is for tracking purpose *************************************
- * 
+ *
  *    v0.6 (2020-01-16), {PNb}:
- *      - Tambahkan sanity check saat pengecekan MATRIX_PAKAI_BOUND_CHECKING 
+ *      - Tambahkan sanity check saat pengecekan MATRIX_PAKAI_BOUND_CHECKING
  *          dengan membandingkan baris & kolom dengan MATRIX_MAXIMUM_SIZE.
  *      - Menambahkan pengecekan matrix untuk operasi dasar antar matrix (*,+,-).
- * 
+ *
  *    v0.5 (2020-01-14), {PNb}:
  *      - Buat file matrix.cpp (akhirnya!) untuk definisi fungsi di luar class.
  *      - Tambahkan operator overloading untuk operasi negatif matrix (mis. a = -b).
- *      - Tambahkan operator overloading untuk operasi penjumlahan & pengurangan 
+ *      - Tambahkan operator overloading untuk operasi penjumlahan & pengurangan
  *          dengan scalar.
  *      - Ubah evaluasi MATRIX_PAKAI_BOUND_CHECKING menggunakan ASSERT.
  *      - Tambahkan pengecekan index selalu positif di MATRIX_PAKAI_BOUND_CHECKING.
- * 
+ *
  *    v0.4 (2020-01-10), {PNb}:
  *      - Tambahkan rounding to zero sebelum operasi sqrt(x) untuk menghindari
  *          kasus x = 0-
@@ -55,12 +55,12 @@
  *          lagi setelah memanggil QRDec untuk mendapatkan Q).
  *      - Menambahkan pengecekan hasil HouseholderTransformQR di dalam QRDec.
  *      - Tambah warning jika MATRIX_PAKAI_BOUND_CHECKING dinonaktifkan.
- * 
+ *
  *    v0.3_engl (2019-12-31), {PNb}:
  *      - Modifikasi dokumentasi kode buat orang asing.
- * 
+ *
  *    v0.3 (2019-12-25), {PNb}:
- *      - Menambahkan fungsi back subtitution untuk menyelesaikan permasalahan 
+ *      - Menambahkan fungsi back subtitution untuk menyelesaikan permasalahan
  *          persamaan linear Ax = B. Dengan A matrix segitiga atas & B vektor.
  *      - Memperbaiki bug pengecekan MATRIX_PAKAI_BOUND_CHECKING pada indexing kolom.
  *      - Menambahkan fungsi QR Decomposition (via Householder Transformation).
@@ -71,7 +71,7 @@
  *          operasi insert dari SubMatrix ke SubMatrix.
  *      - Saat inisialisasi, matrix diisi nol (melalui vIsiHomogen(0.0)).
  *      - Menambahkan function overloading operator '/' dengan scalar.
- * 
+ *
  *    v0.2 (2019-11-30), {PNb}:
  *      - Fungsi yang disupport:
  *          - Operator ==
@@ -79,13 +79,13 @@
  *          - Cholesky Decomposition
  *          - InsertSubMatrix
  *          - InsertVector
- * 
- *    v0.1 (2019-11-29), {PNb}: 
+ *
+ *    v0.1 (2019-11-29), {PNb}:
  *      - Fungsi yang disupport:
  *          - Operasi matrix dasar
  *          - Invers
  *          - Cetak
- * 
+ *
  * See https://github.com/pronenewbits for more!
  *************************************************************************************/
 #ifndef MATRIX_H
@@ -111,12 +111,12 @@ public:
         InitMatWithZero,    /* Initialize matrix with zero */
         NoInitMatZero
     } InitZero;
-    
+
     Matrix(const int16_t _i16row, const int16_t _i16col, InitZero _init = InitMatWithZero)
     {
         this->i16row = _i16row;
         this->i16col = _i16col;
-        
+
         if (_init == InitMatWithZero) {
             this->vSetHomogen(0.0);
         }
@@ -125,7 +125,7 @@ public:
     {
         this->i16row = _i16row;
         this->i16col = _i16col;
-        
+
         if (_init == InitMatWithZero) {
             this->vSetHomogen(0.0);
         }
@@ -136,11 +136,11 @@ public:
             }
         }
     }
-    
+
     bool bMatrixIsValid() {
         /* Check whether the matrix is valid or not.
-         * 
-         *  Index is for buffer if there's some internal rouge code with 1 index buffer overflow 
+         *
+         *  Index is for buffer if there's some internal rouge code with 1 index buffer overflow
          */
         if ((this->i16row > 0) && (this->i16row <= MATRIX_MAXIMUM_SIZE) && (this->i16col > 0) && (this->i16col <= MATRIX_MAXIMUM_SIZE)) {
             return true;
@@ -148,7 +148,7 @@ public:
             return false;
         }
     }
-    
+
     void vSetMatrixInvalid() {
         this->i16row = -1;
         this->i16col = -1;
@@ -157,10 +157,10 @@ public:
     bool bMatrixIsSquare() {
         return (this->i16row == this->i16col);
     }
-    
+
     int16_t i16getRow() { return this->i16row; }
     int16_t i16getCol() { return this->i16col; }
-    
+
     /* Ref: https://stackoverflow.com/questions/6969881/operator-overload */
     class Proxy {
     public:
@@ -172,7 +172,8 @@ public:
          */
         float_prec & operator[](int16_t _column) {
             #if (defined(MATRIX_USE_BOUND_CHECKING))
-                ASSERT((_column >= 0) && (_column < this->_maxColumn) && (_column < MATRIX_MAXIMUM_SIZE), "Matrix index out-of-bounds (at column evaluation)");
+                // ASSERT((_column >= 0) && (_column < this->_maxColumn) && (_column < MATRIX_MAXIMUM_SIZE), "Matrix index out-of-bounds (at column evaluation)");
+                // ASSERT((_column >= 0) && (_column < this->_maxColumn) && (_column < MATRIX_MAXIMUM_SIZE));
             #else
                 #warning("Matrix bounds checking is disabled... good luck >:3");
             #endif
@@ -184,7 +185,7 @@ public:
     };
     Proxy operator[](int16_t _row) {
         #if (defined(MATRIX_USE_BOUND_CHECKING))
-            ASSERT((_row >= 0) && (_row < this->i16row) && (_row < MATRIX_MAXIMUM_SIZE), "Matrix index out-of-bounds (at row evaluation)");
+            // ASSERT((_row >= 0) && (_row < this->i16row) && (_row < MATRIX_MAXIMUM_SIZE));
         #else
             #warning("Matrix bounds checking is disabled... good luck >:3");
         #endif
@@ -409,9 +410,9 @@ public:
         return _outp;
     }
 
-    /* Insert the _lenRow & _lenColumn submatrix, start from _posRowSub & _posColumnSub submatrix; 
+    /* Insert the _lenRow & _lenColumn submatrix, start from _posRowSub & _posColumnSub submatrix;
      *  into matrix at the matrix's _posRow and _posColumn position.
-     * 
+     *
      * Example: A = Matrix 4x4, B = Matrix 2x3
      *
      *  C = A.InsertSubMatrix(B, 1, 1, 0, 1, 1, 2);
@@ -446,7 +447,7 @@ public:
         }
         return _outp;
     }
-    
+
     /* Return the transpose of the matrix */
     Matrix Transpose() {
         Matrix _outp(this->i16col, this->i16row, NoInitMatZero);
@@ -457,7 +458,7 @@ public:
         }
         return _outp;
     }
-    
+
     /* Normalize the vector */
     bool bNormVector() {
         float_prec _normM = 0.0;
@@ -466,7 +467,7 @@ public:
                 _normM = _normM + ((*this)[_i][_j] * (*this)[_i][_j]);
             }
         }
-        
+
         if (_normM < float_prec(float_prec_ZERO)) {
             return false;
         }
@@ -482,7 +483,7 @@ public:
         }
         return true;
     }
-    
+
     Matrix Copy() {
         Matrix _outp(this->i16row, this->i16col, NoInitMatZero);
         for (int16_t _i = 0; _i < this->i16row; _i++) {
@@ -524,7 +525,7 @@ public:
         }
 
         #if (1)
-            /* At here, the _temp matrix should be an upper triangular matrix. 
+            /* At here, the _temp matrix should be an upper triangular matrix.
              * But because rounding error, it might not.
              */
             for (int16_t _i = 1; _i < _temp.i16row; _i++) {
@@ -573,30 +574,30 @@ public:
         }
         return _outp;
     }
-    
+
     /* Use elemtary row operation to reduce the matrix into upper triangular form (like in the first phase of gauss-jordan algorithm).
-     * 
+     *
      * Useful if we want to check the matrix as positive definite or not (can be used before calling CholeskyDec function).
      */
     bool bMatrixIsPositiveDefinite(bool checkPosSemidefinite = false) {
         bool _posDef, _posSemiDef;
         Matrix _temp(this->i16row, this->i16col, NoInitMatZero);
         _temp = this->Copy();
-        
+
         /* Gauss Elimination... */
         for (int16_t _j = 0; _j < (_temp.i16row)-1; _j++) {
             for (int16_t _i = _j+1; _i < _temp.i16row; _i++) {
                 if (fabs(_temp[_j][_j]) < float_prec(float_prec_ZERO)) {
-                    /* Q: Do we still need to check this? 
-                     * A: idk, It's 3 AM here. 
-                     * 
+                    /* Q: Do we still need to check this?
+                     * A: idk, It's 3 AM here.
+                     *
                      * NOTE TO FUTURE SELF: Confirm it!
                      */
                     return false;
                 }
-                
+
                 float_prec _tempfloat = _temp[_i][_j] / _temp[_j][_j];
-                
+
                 for (int16_t _k = 0; _k < _temp.i16col; _k++) {
                     _temp[_i][_k] -= (_temp[_j][_k] * _tempfloat);
                     _temp.vRoundingElementToZero(_i, _k);
@@ -604,7 +605,7 @@ public:
 
             }
         }
-        
+
         _posDef = true;
         _posSemiDef = true;
         for (int16_t _i = 0; _i < _temp.i16row; _i++) {
@@ -615,27 +616,27 @@ public:
                 _posSemiDef = false;
             }
         }
-        
+
         if (checkPosSemidefinite) {
             return _posSemiDef;
         } else {
             return _posDef;
         }
     }
-    
-    
+
+
     /* For square matrix 'this' with size MxM, return vector Mx1 with entries corresponding with diagonal entries of 'this'.
      *  Example:    this = [a11 a12 a13]
      *                     [a21 a22 a23]
      *                     [a31 a32 a33]
-     * 
+     *
      * out = this.GetDiagonalEntries() = [a11]
      *                                   [a22]
      *                                   [a33]
      */
     Matrix GetDiagonalEntries(void) {
         Matrix _temp(this->i16row, 1, NoInitMatZero);
-        
+
         if (this->i16row != this->i16col) {
             _temp.vSetMatrixInvalid();
             return _temp;
@@ -645,19 +646,19 @@ public:
         }
         return _temp;
     }
-    
+
     /* Do the Cholesky Decomposition using Cholesky-Crout algorithm.
-     * 
+     *
      *      A = L*L'     ; A = real, positive definite, and symmetry MxM matrix
      *
      *      L = A.CholeskyDec();
      *
-     *      CATATAN! NOTE! The symmetry property is not checked at the beginning to lower 
+     *      CATATAN! NOTE! The symmetry property is not checked at the beginning to lower
      *          the computation cost. The processing is being done on the lower triangular
-     *          component of _A. Then it is assumed the upper triangular is inherently 
+     *          component of _A. Then it is assumed the upper triangular is inherently
      *          equal to the lower end.
      *          (as a side note, Scilab & MATLAB is using Lapack routines DPOTRF that process
-     *           the upper triangular of _A. The result should be equal mathematically if A 
+     *           the upper triangular of _A. The result should be equal mathematically if A
      *           is symmetry).
      */
     Matrix CholeskyDec()
@@ -776,11 +777,11 @@ public:
 
     /* Do the QR Decomposition for matrix using Householder Transformation.
      *                      A = Q*R
-     * 
+     *
      * PERHATIAN! CAUTION! The matrix calculated by this function return Q' and R (Q transpose and R).
      *  Because QR Decomposition usually used to calculate solution for least-squares equation (that
      *  need Q'), we don't do the transpose of Q inside this routine to lower the computation cost).
-     * 
+     *
      * Example of using QRDec to solve least-squares:
      *                      Ax = b
      *                   (QR)x = b
@@ -813,10 +814,10 @@ public:
 
     /* Do the back-subtitution opeartion for upper triangular matrix A & column matrix B to solve x:
      *                      Ax = B
-     * 
+     *
      * x = BackSubtitution(&A, &B);
      *
-     * CATATAN! NOTE! To lower the computation cost, we don't check that A is a upper triangular 
+     * CATATAN! NOTE! To lower the computation cost, we don't check that A is a upper triangular
      *  matrix (it's assumed that user already make sure before calling this routine).
      */
     Matrix BackSubtitution(Matrix &A, Matrix &B)
@@ -844,7 +845,7 @@ public:
 
 #if (0)
     /*Not yet tested, but should be working (?)*/
-    
+
     /* Melakukan operasi Forward-subtitution pada matrix triangular A & matrix kolom B.
      *                      Ax = B
      *
@@ -874,8 +875,8 @@ public:
     }
     /*Not yet tested, but should be working (?)*/
 #endif
-    
-    
+
+
     /* Printing function -------------------------------------------------------------------------------------------- */
     #if (SYSTEM_IMPLEMENTATION == SYSTEM_IMPLEMENTATION_PC)
         void vPrint() {
@@ -928,22 +929,22 @@ public:
     #else
         /* User must define the print function somewhere */
         void vPrint();
-        void vPrintFull();    
+        void vPrintFull();
     #endif
     /* Printing function -------------------------------------------------------------------------------------------- */
-    
-    
+
+
 private:
     /* Data structure of Matrix class:
      *  0 <= i16row <= (MATRIX_MAXIMUM_SIZE-1)      ; i16row is the row of the matrix. i16row is invalid if (i16row == -1)
      *  0 <= i16col <= (MATRIX_MAXIMUM_SIZE-1)      ; i16col is the column of the matrix. i16col is invalid if (i16col == -1)
-     * 
+     *
      * f32data[MATRIX_MAXIMUM_SIZE][MATRIX_MAXIMUM_SIZE] is the memory representation of the matrix. We only use the first i16row-th
      *  and first i16col-th memory for the matrix data. The rest is unused.
-     * 
-     * This configuration might seems wasteful (yes it is). But with this, we can make the matrix library code as cleanly as possible 
+     *
+     * This configuration might seems wasteful (yes it is). But with this, we can make the matrix library code as cleanly as possible
      *  (like I said in the github page, I've made decision to sacrifice speed & performance to get best code readability I could get).
-     * 
+     *
      * You could change the data structure of f32data if you want to make the implementation more memory efficient.
      */
     int16_t i16row;
