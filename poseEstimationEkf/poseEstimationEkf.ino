@@ -90,6 +90,7 @@ enum {
 float aX, aY, aZ, gX, gY, gZ, mX, mY, mZ;
 int16_t distance = 0;
 Adafruit_VL53L1X vl53 = Adafruit_VL53L1X(XSHUT_PIN, IRQ_PIN);
+bool use_magnetometer = SS_Z_LEN == 6;
 
 /* ============================================== Auxiliary Variables/function declaration ============================================== */
 elapsedMillis timerCollectData = 0;
@@ -152,14 +153,22 @@ void loop() {
 
 
     U[0][0] = gX*DEG_2_RAD; U[1][0] = gY*DEG_2_RAD; U[2][0] = gZ*DEG_2_RAD;
-    U[3][0] = mX; U[4][0] = mY; U[5][0] = mZ;
     Y[0][0] = aX; Y[1][0] = aY; Y[2][0] = aZ;
+    if(use_magnetometer){
+//      U[3][0] = mX; U[4][0] = mY; U[5][0] = mZ;
+//      float_prec _normYm = sqrt(Y[3][0]*Y[3][0] + Y[4][0]*Y[4][0] + Y[5][0]*Y[5][0]);
+//      Y[3][0] = Y[3][0]/_normYm;
+//      Y[4][0] = Y[4][0]/_normYm;
+//      Y[5][0] = Y[5][0]/_normYm;
+    }
 
     // Normalize output vector
-    float_prec _normY = sqrt(Y[0][0]*Y[0][0] + Y[1][0]*Y[1][0] + Y[2][0]*Y[2][0]);
-    Y[0][0] = Y[0][0]/_normY;
-    Y[1][0] = Y[1][0]/_normY;
-    Y[2][0] = Y[2][0]/_normY;
+    float_prec _normYa = sqrt(Y[0][0]*Y[0][0] + Y[1][0]*Y[1][0] + Y[2][0]*Y[2][0]);
+    Y[0][0] = Y[0][0]/_normYa;
+    Y[1][0] = Y[1][0]/_normYa;
+    Y[2][0] = Y[2][0]/_normYa;
+
+
 
 
 
@@ -173,6 +182,8 @@ void loop() {
     
     if(count % 500){
       recordData(U, Y, quaternionData);
+      Serial.print(distance);
+      Serial.print(" ");
       Serial.print(computeAltitude(distance, quaternionData));
       Serial.println("");      
     }
@@ -318,17 +329,19 @@ bool Main_bUpdateNonlinearY(Matrix &Y, Matrix &X, Matrix &U)
 
     Y[2][0] = (+(q0_2) -(q1_2) -(q2_2) +(q3_2)) * IMU_ACC_Z0;
 
-//     Y[3][0] = (+(q0_2)+(q1_2)-(q2_2)-(q3_2)) * IMU_MAG_B0[0][0]
-//              +(2*(q1*q2+q0*q3)) * IMU_MAG_B0[1][0]
-//              +(2*(q1*q3-q0*q2)) * IMU_MAG_B0[2][0];
-//
-//     Y[4][0] = (2*(q1*q2-q0*q3)) * IMU_MAG_B0[0][0]
-//              +(+(q0_2)-(q1_2)+(q2_2)-(q3_2)) * IMU_MAG_B0[1][0]
-//              +(2*(q2*q3+q0*q1)) * IMU_MAG_B0[2][0];
-//
-//     Y[5][0] = (2*(q1*q3+q0*q2)) * IMU_MAG_B0[0][0]
-//              +(2*(q2*q3-q0*q1)) * IMU_MAG_B0[1][0]
-//              +(+(q0_2)-(q1_2)-(q2_2)+(q3_2)) * IMU_MAG_B0[2][0];
+    if (use_magnetometer){
+     Y[3][0] = (+(q0_2)+(q1_2)-(q2_2)-(q3_2)) * IMU_MAG_B0[0][0]
+              +(2*(q1*q2+q0*q3)) * IMU_MAG_B0[1][0]
+              +(2*(q1*q3-q0*q2)) * IMU_MAG_B0[2][0];
+
+     Y[4][0] = (2*(q1*q2-q0*q3)) * IMU_MAG_B0[0][0]
+              +(+(q0_2)-(q1_2)+(q2_2)-(q3_2)) * IMU_MAG_B0[1][0]
+              +(2*(q2*q3+q0*q1)) * IMU_MAG_B0[2][0];
+
+     Y[5][0] = (2*(q1*q3+q0*q2)) * IMU_MAG_B0[0][0]
+              +(2*(q2*q3-q0*q1)) * IMU_MAG_B0[1][0]
+              +(+(q0_2)-(q1_2)-(q2_2)+(q3_2)) * IMU_MAG_B0[2][0];
+    }
     return true;
 }
 
@@ -381,30 +394,34 @@ bool Main_bCalcJacobianH(Matrix &H, Matrix &X, Matrix &U)
     H[0][0] = -2*q2 * IMU_ACC_Z0;
     H[1][0] = +2*q1 * IMU_ACC_Z0;
     H[2][0] = +2*q0 * IMU_ACC_Z0;
-//    H[3][0] =  2*q0*IMU_MAG_B0[0][0] + 2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
-//    H[4][0] = -2*q3*IMU_MAG_B0[0][0] + 2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
-//    H[5][0] =  2*q2*IMU_MAG_B0[0][0] - 2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
+
 
     H[0][1] = +2*q3 * IMU_ACC_Z0;
     H[1][1] = +2*q0 * IMU_ACC_Z0;
     H[2][1] = -2*q1 * IMU_ACC_Z0;
-//    H[3][1] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
-//    H[4][1] =  2*q2*IMU_MAG_B0[0][0]-2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
-//    H[5][1] =  2*q3*IMU_MAG_B0[0][0]-2*q0*IMU_MAG_B0[1][0] - 2*q1*IMU_MAG_B0[2][0];
+
 
     H[0][2] = -2*q0 * IMU_ACC_Z0;
     H[1][2] = +2*q3 * IMU_ACC_Z0;
     H[2][2] = -2*q2 * IMU_ACC_Z0;
-//    H[3][2] = -2*q2*IMU_MAG_B0[0][0]+2*q1*IMU_MAG_B0[1][0] - 2*q0*IMU_MAG_B0[2][0];
-//    H[4][2] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
-//    H[5][2] =  2*q0*IMU_MAG_B0[0][0]+2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
 
     H[0][3] = +2*q1 * IMU_ACC_Z0;
     H[1][3] = +2*q2 * IMU_ACC_Z0;
     H[2][3] = +2*q3 * IMU_ACC_Z0;
-//    H[3][3] = -2*q3*IMU_MAG_B0[0][0]+2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
-//    H[4][3] = -2*q0*IMU_MAG_B0[0][0]-2*q3*IMU_MAG_B0[1][0] + 2*q2*IMU_MAG_B0[2][0];
-//    H[5][3] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+    if (use_magnetometer){
+      H[3][3] = -2*q3*IMU_MAG_B0[0][0]+2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
+      H[4][3] = -2*q0*IMU_MAG_B0[0][0]-2*q3*IMU_MAG_B0[1][0] + 2*q2*IMU_MAG_B0[2][0];
+      H[5][3] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+      H[3][2] = -2*q2*IMU_MAG_B0[0][0]+2*q1*IMU_MAG_B0[1][0] - 2*q0*IMU_MAG_B0[2][0];
+      H[4][2] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+      H[5][2] =  2*q0*IMU_MAG_B0[0][0]+2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
+      H[3][1] =  2*q1*IMU_MAG_B0[0][0]+2*q2*IMU_MAG_B0[1][0] + 2*q3*IMU_MAG_B0[2][0];
+      H[4][1] =  2*q2*IMU_MAG_B0[0][0]-2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
+      H[5][1] =  2*q3*IMU_MAG_B0[0][0]-2*q0*IMU_MAG_B0[1][0] - 2*q1*IMU_MAG_B0[2][0];
+      H[3][0] =  2*q0*IMU_MAG_B0[0][0] + 2*q3*IMU_MAG_B0[1][0] - 2*q2*IMU_MAG_B0[2][0];
+      H[4][0] = -2*q3*IMU_MAG_B0[0][0] + 2*q0*IMU_MAG_B0[1][0] + 2*q1*IMU_MAG_B0[2][0];
+      H[5][0] =  2*q2*IMU_MAG_B0[0][0] - 2*q1*IMU_MAG_B0[1][0] + 2*q0*IMU_MAG_B0[2][0];
+    }
 
     return true;
 }
