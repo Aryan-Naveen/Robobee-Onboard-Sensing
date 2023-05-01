@@ -44,23 +44,43 @@ float_prec EKF_PINIT_data[SS_X_LEN*SS_X_LEN] = {P_INIT, 0,      0,      0,
                                                 0,      0,      P_INIT, 0,
                                                 0,      0,      0,      P_INIT};
 Matrix EKF_PINIT(SS_X_LEN, SS_X_LEN, EKF_PINIT_data);
+
+
+float_prec EKF_PINIT_data_height[2*2] =         {P_INIT, 0,    
+                                                0,      P_INIT};
+Matrix EKF_PINIT_HEIGHT(2, 2, EKF_PINIT_data_height);
 /* Q constant -------------------------------------------------------------------------------------------------------------- */
 float_prec EKF_QINIT_data[SS_X_LEN*SS_X_LEN] = {Q_INIT, 0,      0,      0,
                                                 0,      Q_INIT, 0,      0,
                                                 0,      0,      Q_INIT, 0,
                                                 0,      0,      0,      Q_INIT};
+
+float_prec EKF_QINIT_data_height[SS_X_LEN*SS_X_LEN] = {Q_INIT, 0,
+                                                0,      Q_INIT};                                                
 Matrix EKF_QINIT(SS_X_LEN, SS_X_LEN, EKF_QINIT_data);
+
+Matrix EKF_QINIT_HEIGHT(2, 2, EKF_QINIT_data_height);
 /* R constant -------------------------------------------------------------------------------------------------------------- */
 float_prec EKF_RINIT_data[SS_Z_LEN*SS_Z_LEN] = {R_INIT_ACC, 0,          0,        
                                                 0,          R_INIT_ACC, 0,        
                                                 0,          0,          R_INIT_ACC};
 
 Matrix EKF_RINIT(SS_Z_LEN, SS_Z_LEN, EKF_RINIT_data);
+
+float_prec EKF_RINIT_data_height[SS_Z_LEN*SS_Z_LEN] = {R_INIT_ACC};
+
+Matrix EKF_RINIT_height(1, 1, EKF_RINIT_data);
 /* Nonlinear & linearization function -------------------------------------------------------------------------------------- */
 bool Main_bUpdateNonlinearX(Matrix &X_Next, Matrix &X, Matrix &U);
 bool Main_bUpdateNonlinearY(Matrix &Y, Matrix &X, Matrix &U);
 bool Main_bCalcJacobianF(Matrix &F, Matrix &X, Matrix &U);
 bool Main_bCalcJacobianH(Matrix &H, Matrix &X, Matrix &U);
+
+bool Main_bUpdateNonlinearXHeight(Matrix &X_Next, Matrix &X, Matrix &U);
+bool Main_bUpdateNonlinearYHeight(Matrix &Y, Matrix &X, Matrix &U);
+bool Main_bCalcJacobianFHeight(Matrix &F, Matrix &X, Matrix &U);
+bool Main_bCalcJacobianHHeight(Matrix &H, Matrix &X, Matrix &U);
+
 /* EKF variables ----------------------------------------------------------------------------------------------------------- */
 Matrix quaternionData(SS_X_LEN, 1);
 Matrix Y(SS_Z_LEN, 1);
@@ -98,6 +118,7 @@ uint64_t u64compuTime;
 char bufferTxSer[100];
 void serialFloatPrint(float f);
 
+int start;
 
 void setup() {
   // put your setup code here, to run once:
@@ -144,6 +165,19 @@ void setup() {
 
 int count = 0;
 void loop() {
+  if (count == 0) {
+    Serial.println ("Ready?");
+    Serial.println ("3");
+    delay (1000);
+    Serial.println ("2");
+    delay (1000);
+    Serial.println ("1");
+    delay (1000);
+    Serial.println ("Begin");
+    delay (1000);
+    start = millis();
+  }
+  
   // put your main code here, to run repeatedly:
   if (vl53.dataReady()) {
     distance = vl53.distance();
@@ -155,7 +189,7 @@ void loop() {
     U[0][0] = gX*DEG_2_RAD; U[1][0] = gY*DEG_2_RAD; U[2][0] = gZ*DEG_2_RAD;
     Y[0][0] = aX; Y[1][0] = aY; Y[2][0] = aZ;
     if(use_magnetometer){
-//      U[3][0] = mX; U[4][0] = mY; U[5][0] = mZ;
+      Y[3][0] = mX; Y[4][0] = mY; Y[5][0] = mZ;
 //      float_prec _normYm = sqrt(Y[3][0]*Y[3][0] + Y[4][0]*Y[4][0] + Y[5][0]*Y[5][0]);
 //      Y[3][0] = Y[3][0]/_normYm;
 //      Y[4][0] = Y[4][0]/_normYm;
@@ -189,6 +223,10 @@ void loop() {
     }
     count ++;
 
+    if (millis() - start > 10000) {
+      Serial.println ("Done");
+      while (1);
+    }
   }
 }
 
@@ -248,8 +286,9 @@ void recordData(Matrix &U, Matrix &Y, Matrix &quaternion){
 }
 
 float_prec computeAltitude(int16_t distance, Matrix &quat){
-  Matrix rotation_mat = quat2RotationMat(quat);
-  Matrix tof_mat = rotation_mat*IMU_2_TOF;
+  Matrix R = quat2RotationMat(quat);
+  Matrix R_inv = R.Invers();
+  Matrix tof_mat = R_inv*IMU_2_TOF;
   return tof_mat[2][2]*distance + tof_mat[2][3];
 }
 
