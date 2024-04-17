@@ -1,0 +1,121 @@
+
+%Use the IMU sensor adaptor in a UAV Scenario simulation. 
+% 
+% First, create the scenario.
+scenario = uavScenario("StopTime", 20, "UpdateRate", 100);
+
+% Add a ground plane.
+color.Gray = 0.651*ones(1,3);
+addMesh(scenario,"polygon",{[-500 -500; 500 -500; 500 500; -500 500],[-4 0]},color.Gray)
+
+
+% Create a UAV platform and specify the trajectory. Add a fixed-wing mesh for visualization.
+plat = uavPlatform("UAV", scenario, "Trajectory", ...
+    waypointTrajectory([0 0 -10; 100 0 -20; 100 100 -30], "TimeOfArrival", [0 12 20], "AutoBank", true));
+updateMesh(plat,"quadrotor", {50}, [1 0 0], eul2tform([0 0 pi]));
+
+% Attach the IMU sensor using the uavSensor object and specify the uavIMU as an input. 
+% Load parameters for the sensor model.
+
+imu = uavSensor("IMU", plat, uavIMU(imuSensor));
+ LidarModel = uavLidarPointCloudGenerator("AzimuthLimits", [-90, 90], "ElevationLimits", [-90, 90], "HasNoise", true);
+tof = uavSensor("Lidar",plat,LidarModel,"MountingLocation",[0,0, 5],"MountingAngles",[0 -90 0]);
+
+fn = fullfile(matlabroot,'toolbox','shared',...
+    'positioning','positioningdata','generic.json');
+loadparams(imu.SensorModel,fn,"GenericLowCost9Axis");
+
+
+% Visualize the scenario.
+figure
+ax = show3D(scenario);
+xlim([-20 200]);
+ylim([-20 200]);
+
+% Preallocate the simData structure and fields to store simulation data. The IMU sensor will output acceleration and angular rates.
+simData = struct;
+simData.Time = duration.empty;
+simData.AccelerationX = zeros(0,1);
+simData.AccelerationY = zeros(0,1);
+simData.AccelerationZ = zeros(0,1);
+simData.AngularRatesX = zeros(0,1);
+simData.AngularRatesY = zeros(0,1);
+simData.AngularRatesZ = zeros(0,1);
+simData.ToFDistance = zeros(0, 1);
+
+
+% Setup the scenario.
+setup(scenario);
+
+% Run the simulation using the advance function. Update the sensors and record the data.
+updateCounter = 0;
+
+
+while true
+    % Advance scenario.
+    isRunning = advance(scenario);
+    updateCounter = updateCounter + 1;
+    % Update sensors and read IMU data.
+    updateSensors(scenario);
+    scenario.show
+    [isUpdated_imu, t_imu, acc, gyro] = read(imu);
+    [isUpdated_tof, t_tof, ptCloud_lidar] = read(tof);
+    % Store data in structure.
+    simData.Time = [simData.Time; seconds(t_imu)];
+    simData.AccelerationX = [simData.AccelerationX; acc(1)];
+    simData.AccelerationY = [simData.AccelerationY; acc(2)];
+    simData.AccelerationZ = [simData.AccelerationZ; acc(3)];
+    simData.AngularRatesX = [simData.AngularRatesX; gyro(1)];
+    simData.AngularRatesY = [simData.AngularRatesY; gyro(2)];
+    simData.AngularRatesZ = [simData.AngularRatesZ; gyro(3)];
+
+    simData.ToFDistance = [simData.ToFDistance; proximitySensor(ptCloud_lidar)];
+
+    % Update visualization every 10 updates.
+    if updateCounter > 10
+        show3D(scenario, "FastUpdate", true, "Parent", ax);
+        updateCounter = 0;
+        drawnow limitrate
+    end
+    % Exit loop when scenario is finished.
+    if ~isRunning 
+        break; 
+    end
+end
+
+simTable = table2timetable(struct2table(simData));
+figure
+stackedplot(simTable, ["AccelerationX", "AccelerationY", "AccelerationZ", ...
+    "AngularRatesX", "AngularRatesY", "AngularRatesZ", "ToFDistance"], ...
+    "DisplayLabels", ["AccX (m/s^2)", "AccY (m/s^2)", "AccZ (m/s^2)", ...
+    "AngularRateX (rad/s)", "AngularRateY (rad/s)", "AngularRateZ (rad/s)", "Proximity Sensor"]);
+
+function sensorReadings = proximitySensor(ptCloud)
+    % Define sensor characteristics (e.g., field of view, range)
+    fov = 60; % Field of view in degrees
+    maxRange = 25; % Maximum range of the proximity sensor in meters
+
+    % Extract XYZ coordinates from the point cloud
+
+    XYZ = reshape(ptCloud.Location, [size(ptCloud.Location, 1)*size(ptCloud.Location, 2), 3]);
+
+
+    % Calculate Euclidean distances
+    distances = sqrt(sum(XYZ.^2, 2));
+
+    % Filter points within the sensor's field of view and within range
+    validPoints = (abs(atan2d(XYZ(:,3), XYZ(:,2))) <= fov/2) & (distances <= maxRange);
+
+    % Get the closest valid point
+    rmsNoise = 1;
+    distances = distances +  rmsNoise * randn(size(distances, 1), 1);
+    closestPoint = min(distances(validPoints));
+
+    % Output sensor reading
+    if isempty(closestPoint)
+        sensorReadings = nan; % No valid points in range
+    else
+        sensorReadings = closestPoint
+    end
+end
+
