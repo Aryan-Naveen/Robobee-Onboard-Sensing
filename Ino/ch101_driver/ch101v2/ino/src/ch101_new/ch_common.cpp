@@ -29,10 +29,14 @@
  or by mail at 2560 Ninth Street, Suite 220, Berkeley, CA 94710.
  */
 
+#include <Arduino.h>
+
 #include "soniclib.h"
 #include "ch_common.h"
 #include "chirp_bsp.h"
 #include "ch_math_utils.h"
+
+#define MAX_PROG_XFER_SIZE 32
 
 
 /* Local definitions */
@@ -380,6 +384,7 @@ uint32_t ch_common_get_range(ch_dev_t *dev_ptr, ch_range_t range_type) {
 		}
 
 		err = chdrv_read_word(dev_ptr, tof_reg, &time_of_flight);
+    // Serial.println (time_of_flight);    
 
 		if (!err && (time_of_flight != UINT16_MAX)) { // If object detected
 
@@ -463,7 +468,6 @@ uint8_t ch_common_get_locked_state(ch_dev_t *dev_ptr) {
 
 void ch_common_prepare_pulse_timer(ch_dev_t *dev_ptr) {
 	uint8_t cal_trig_reg;
-
 	if (dev_ptr->part_number == CH101_PART_NUMBER) {
 		cal_trig_reg = CH101_COMMON_REG_CAL_TRIG;
 	} else {
@@ -484,6 +488,7 @@ void ch_common_store_pt_result(ch_dev_t *dev_ptr) {
 	}
 
 	chdrv_read_word(dev_ptr, pt_result_reg, &rtc_cal_result);
+  Serial.println (rtc_cal_result);
 	dev_ptr->rtc_cal_result = rtc_cal_result;
 }
 

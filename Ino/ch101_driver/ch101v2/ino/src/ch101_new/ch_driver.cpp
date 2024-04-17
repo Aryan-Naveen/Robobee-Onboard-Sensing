@@ -26,10 +26,13 @@
  or by mail at 2560 Ninth Street, Suite 220, Berkeley, CA 94710.
  */
 
+#include <Arduino.h>
+
 #include "soniclib.h"
 #include "chirp_bsp.h"
 #include "ch_driver.h"
 
+#define CHDRV_DEBUG 1
 
 /*!
  * \brief Write bytes to a sensor device in programming mode.
@@ -108,7 +111,9 @@ int chdrv_prog_i2c_read_nb(ch_dev_t *dev_ptr, uint8_t *message, uint16_t len) {
 int chdrv_write_byte(ch_dev_t *dev_ptr, uint16_t mem_addr, uint8_t data_value) {
 	uint8_t message[] = { sizeof(data_value), data_value };		// insert byte count (1) at start of data
 
+  // Serial.println("Whats going to happen?");
 	int ch_err = chbsp_i2c_mem_write(dev_ptr, mem_addr, message, sizeof(message));
+  // Serial.println ("What happened here???");
 
 	return ch_err;
 }
@@ -219,6 +224,11 @@ int chdrv_read_word(ch_dev_t *dev_ptr, uint16_t mem_addr, uint16_t * data) {
 void chdrv_group_measure_rtc(ch_group_t *grp_ptr) {
 	uint8_t i;
 	const uint32_t pulselength = grp_ptr->rtc_cal_pulse_ms;
+#ifdef CHDRV_DEBUG  
+  char cbuf[50];
+  snprintf (cbuf, sizeof(cbuf), "rtc_cal_pulse_ms length: %lu\n", grp_ptr->rtc_cal_pulse_ms);
+  chbsp_print_str (cbuf);
+#endif
 
 	/* Configure the host's side of the IO pin as a low output */
 	chbsp_group_io_clear(grp_ptr);
@@ -490,11 +500,14 @@ void chdrv_group_i2c_irq_handler(ch_group_t *grp_ptr, uint8_t i2c_bus_index) {
 int chdrv_wait_for_lock(ch_dev_t *dev_ptr, uint16_t timeout_ms) {
 	uint32_t start_time = chbsp_timestamp_ms();
 	int ch_err = !(dev_ptr->sensor_connected);
-
+  // Serial.println ("While loop");
+  // Serial.println (start_time);
+  // Serial.println (timeout_ms);
 	while (!ch_err && !(dev_ptr->get_locked_state(dev_ptr))) {
 		chbsp_delay_ms(10);
 		ch_err = ((chbsp_timestamp_ms() - start_time) > timeout_ms);
 	}
+  // Serial.println ("While loop done");
 
 #ifdef CHDRV_DEBUG
 	if (ch_err) {
@@ -553,6 +566,7 @@ int chdrv_group_hw_trigger(ch_group_t *grp_ptr) {
 
 		// Set INT pin as output
 		chbsp_group_set_io_dir_out(grp_ptr);
+    Serial.println (grp_ptr->pretrig_delay_us);
 
 		if (grp_ptr->pretrig_delay_us == 0) {
 			/* No pre-trigger delay - trigger rx-only and tx/rx nodes together */
@@ -624,7 +638,7 @@ int chdrv_hw_trigger(ch_dev_t *dev_ptr) {
 		// Generate pulse
 		chbsp_set_io_dir_out(dev_ptr);
 		chbsp_io_set(dev_ptr);
-		chbsp_delay_us(CHDRV_TRIGGER_PULSE_US); 	
+		chbsp_delay_us(CHDRV_TRIGGER_PULSE_US); 
 		chbsp_io_clear(dev_ptr);
 		chbsp_set_io_dir_in(dev_ptr);
 
@@ -653,6 +667,7 @@ int chdrv_prog_write(ch_dev_t *dev_ptr, uint8_t reg_addr, uint16_t data) {
 	
 	/* Write the register address, followed by the value to be written */
 	uint8_t message[] = { reg_addr, (uint8_t) data, (uint8_t) (data >> 8) };
+  // Serial.println (data);
 
 	/* For the 2-byte registers, we also need to also write MSB after the LSB */
 	return chdrv_prog_i2c_write(dev_ptr, message, (1 + CH_PROG_SIZEOF(reg_addr)));
@@ -675,15 +690,18 @@ int chdrv_prog_mem_write(ch_dev_t *dev_ptr, uint16_t addr, uint8_t *message, uin
 	int ch_err = (nbytes == 0);
 
 	if (!ch_err) {
+    // Serial.println ("Writing location");    
 		ch_err = chdrv_prog_write(dev_ptr, CH_PROG_REG_ADDR, addr);
 	}
 
 	if (nbytes == 1 || (nbytes == 2 && !(addr & 1))) {
 		uint16_t data = message[0] | (message[1] << 8);
 		if (!ch_err) {
+      // Serial.println ("Writing data");
 			ch_err = chdrv_prog_write(dev_ptr, CH_PROG_REG_DATA, data);
 		}
 		if (!ch_err) {
+      // Serial.println ("Writing opcode");
 			uint8_t opcode = (0x03 | ((nbytes == 1) ? 0x08 : 0x00));			// XXX need define
 
 			ch_err = chdrv_prog_write(dev_ptr, CH_PROG_REG_CTL, opcode);
@@ -819,6 +837,7 @@ static int chdrv_init_ram(ch_dev_t *dev_ptr) {
 			chbsp_print_str(cbuf);
 			prog_time = chbsp_timestamp_ms();
 #endif
+      // Serial.println ("Writing ram");
 			ch_err = chdrv_prog_mem_write(dev_ptr, ram_address, (uint8_t *) dev_ptr->ram_init, ram_bytecount);
 #ifdef CHDRV_DEBUG
 			if (!ch_err) {
@@ -872,6 +891,9 @@ int chdrv_prog_ping(ch_dev_t *dev_ptr) {
 
     ch_err |= chdrv_prog_read(dev_ptr, CH_PROG_REG_PING, &tmp);
 
+    // Serial.println (tmp & 0xFF);
+    // Serial.println (tmp >> 8);
+
 #ifdef CHDRV_DEBUG
 	if (!ch_err) {
 		char cbuf[80];
@@ -905,8 +927,9 @@ int chdrv_detect_and_program(ch_dev_t *dev_ptr) {
 	}
 
 	chbsp_program_enable(dev_ptr);					// assert PROG pin
-
+  // Serial.println ("Prog ping");
 	if (chdrv_prog_ping(dev_ptr)) {					// if device found
+    // Serial.println ("Device Found");
 		dev_ptr->sensor_connected = 1;
 
 		// Call device discovery hook routine, if any
@@ -924,11 +947,12 @@ int chdrv_detect_and_program(ch_dev_t *dev_ptr) {
 			chbsp_print_str(cbuf);
 		}
 #endif
-
+    // Serial.println ("Ram init");
 		ch_err = chdrv_init_ram(dev_ptr) ||                // init ram values
 				 chdrv_write_firmware(dev_ptr) ||          // transfer program
 				 chdrv_reset_and_halt(dev_ptr); 			// reset asic, since it was running mystery code before halt
-
+    // Serial.print ("Error occured on FW write: ");
+    // Serial.println (ch_err);
 #ifdef CHDRV_DEBUG
 		if (!ch_err) {
 			snprintf(cbuf, sizeof(cbuf), "Changing I2C address to %u\n", dev_ptr->i2c_address);
@@ -937,6 +961,11 @@ int chdrv_detect_and_program(ch_dev_t *dev_ptr) {
 #endif
 
 		if (!ch_err ) {
+      // Serial.println ("Updating I2C Address");
+      // uint8_t addr_to_write[] = {0, dev_ptr->i2c_address};
+			// ch_err = chdrv_prog_mem_write(dev_ptr, 0x01C5, addr_to_write, 1);			// XXX need define
+      // Serial.println ("Done");
+
 			ch_err = chdrv_prog_mem_write(dev_ptr, 0x01C5, &dev_ptr->i2c_address, 1);			// XXX need define
 		}
 
@@ -970,6 +999,7 @@ int chdrv_detect_and_program(ch_dev_t *dev_ptr) {
 	if (ch_err) {
 		dev_ptr->sensor_connected = 0;     		// only marked as connected if no errors
 	}
+  // Serial.println ("Detect and program done");
 
 	return ch_err;
 }
@@ -1097,6 +1127,7 @@ int chdrv_group_start(ch_group_t *grp_ptr) {
 #endif
 
 	if (!ch_err) {
+    // Serial.println ("Group prepare");
 		ch_err = chdrv_group_prepare(grp_ptr);
 	}
 
@@ -1116,6 +1147,7 @@ RESET_AND_LOAD:
 		 /* For every i2c bus, set the devices idle in parallel, then disable programming mode for all devices on that bus
 		  * This is kludgey because we don't have a great way of iterating over the i2c buses */
 		ch_dev_t * c_prev = grp_ptr->device[0];
+    // Serial.println ("IC Set idle");
 		chdrv_set_idle(c_prev);
 		for (i = 0; i < grp_ptr->num_ports; i++) {
 			ch_dev_t * c = grp_ptr->device[i];
@@ -1127,12 +1159,13 @@ RESET_AND_LOAD:
 			chbsp_program_disable(c);
 			c_prev = c;
 		}
-
+    // Serial.println ("Detect and program");
 		ch_err = chdrv_group_detect_and_program(grp_ptr);
 
 	} while (ch_err && prog_tries++ < CH_PROG_XFER_RETRY);
 
 	if (!ch_err) {
+    // Serial.println (grp_ptr->sensor_count);
 		ch_err = (grp_ptr->sensor_count == 0);
 #ifdef CHDRV_DEBUG
 		if (ch_err) {
@@ -1154,11 +1187,16 @@ RESET_AND_LOAD:
 	}
 
 	if (!ch_err) {
+    // delay (500);
+    // Serial.println ("Wait for lock");
 		ch_err = chdrv_group_wait_for_lock(grp_ptr);
 		if(ch_err && prog_tries++ < CH_PROG_XFER_RETRY+1) {
+      // Serial.println ("Wait Failed");
 			goto RESET_AND_LOAD;
 		}
+    // Serial.println ("Wait for lock done");
 	}
+ 
 
 	if (!ch_err) {
 #ifdef CHDRV_DEBUG
@@ -1221,7 +1259,9 @@ int chdrv_soft_reset(ch_dev_t *dev_ptr) {
 			ch_err = chdrv_init_ram(dev_ptr) || chdrv_reset_and_halt(dev_ptr);
 		}
 		if (!ch_err) {
-			ch_err = chdrv_prog_mem_write(dev_ptr, 0x01C5, &dev_ptr->i2c_address, 1) ||			// XXX need define
+      // uint8_t addr_to_write[2] = {0, dev_ptr->i2c_address};
+			// ch_err = chdrv_prog_mem_write(dev_ptr, 0x01C5, addr_to_write, 1) ||			// XXX need define
+      ch_err = chdrv_prog_mem_write(dev_ptr, 0x01C5, &dev_ptr->i2c_address, 1) ||			// XXX need define
 					 chdrv_prog_write(dev_ptr, CH_PROG_REG_CPU, 2);    // Exit programming mode and run the chip
 		}
 

@@ -26,6 +26,8 @@
  or by mail at 2560 Ninth Street, Suite 220, Berkeley, CA 94710.
  */
 
+#include <Arduino.h>
+
 #include "soniclib.h"
 #include "ch_driver.h"
 #include "chirp_bsp.h"
@@ -42,6 +44,8 @@
 
 uint8_t	ch_init(ch_dev_t *dev_ptr, ch_group_t *grp_ptr, uint8_t dev_num, ch_fw_init_func_t fw_init_func) {
 	
+  // Serial.println ("ChInit Called");
+
 	uint8_t	ret_val = RET_ERR;
 
 	ch_i2c_info_t	i2c_info;
@@ -58,6 +62,8 @@ uint8_t	ch_init(ch_dev_t *dev_ptr, ch_group_t *grp_ptr, uint8_t dev_num, ch_fw_i
 			ret_val = (*fw_init_func)(dev_ptr, grp_ptr, i2c_info.address, dev_num, i2c_info.bus_num);
 		}
 	}
+
+  // Serial.println ("ChInit Done");
 
 	return ret_val;
 }

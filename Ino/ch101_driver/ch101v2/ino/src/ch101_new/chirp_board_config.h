@@ -45,19 +45,24 @@
 #define CHBSP_NUM_I2C_BUSES 		1		// number of I2C buses used by sensors
 #define CHBSP_RTC_CAL_PULSE_MS      100
 
-#define CH_RST  8
-#define CH_PROG 9
-#define CH_INT  10
+#define CH_RST  32
+#define CH_PROG 33
+#define CH_INT  25
 
 #define CHIRP_PIN_PROG   {CH_PROG}
-#define CHIRP_PIN_IO     {CH_PROG}
+#define CHIRP_PIN_IO     {CH_INT}
 
-#define	 CHIRP_SENSOR_FW_INIT_FUNC	ch101_gpr_init
+// #define	 CHIRP_SENSOR_FW_INIT_FUNC	ch101_gpr_init
+#define	 CHIRP_SENSOR_FW_INIT_FUNC	ch101_gpr_sr_init
+
+#define	CHIRP_SENSOR_MAX_RANGE_MM		(500)	/* maximum range, in mm */
+#define CHIRP_SENSOR_STATIC_RANGE (0)
+#define CHBSP_RTC_CAL_PULSE_MS      100
 
 #define CHIRP_FIRST_SENSOR_MODE		CH_MODE_TRIGGERED_TX_RX
-#define CHIRP_OTHER_SENSOR_MODE		CH_MODE_TRIGGERED_RX_ONLY\
+#define CHIRP_OTHER_SENSOR_MODE		CH_MODE_TRIGGERED_RX_ONLY
 
-#define	MEASUREMENT_INTERVAL_MS (1000)
+#define	MEASUREMENT_INTERVAL_MS (100)
 
 #define DATA_MAX_NUM_SAMPLES  (1)
 

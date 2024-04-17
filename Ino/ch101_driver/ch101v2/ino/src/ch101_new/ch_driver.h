@@ -85,7 +85,7 @@
 
 #define CHDRV_SCALEFACTOR_INDEX     4 		/*!< Index for calculating scalefactor. */
 
-#define CHDRV_TRIGGER_PULSE_US		5			/*!< Length of INT pulse to trigger sensor, in microseconds - minimum 800ns.  */
+#define CHDRV_TRIGGER_PULSE_US		10			/*!< Length of INT pulse to trigger sensor, in microseconds - minimum 800ns.  */
 #define CHDRV_DELAY_OVERHEAD_US		12			/*!< Tuning parameter to adjust pre-trigger timing */
 #define CHDRV_PRETRIGGER_DELAY_US	600			/*!< Time to delay between triggering rx-only and tx/rx nodes, in us */
 

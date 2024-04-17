@@ -1,7 +1,7 @@
 #include <Wire.h>
 
-#define RESET_N 12
-#define PROG 11
+#define RESET_N 8
+#define PROG 9
 
 void setup () {
   // Set up GPIO

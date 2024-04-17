@@ -1,0 +1,44 @@
+9Axis Notes
+~~~~~~~~~~~
+
+https://invensense.tdk.com/wp-content/uploads/2021/10/DS-000189-ICM-20948-v1.5.pdf
+
+SLAVE ADDY: 110 100X (X depends on what AD0 is set to
+1101 0010 1
+
+USER BANK 0
+~~~~~~~~~~~~
+
+Data Registers:
+PWR_MGMT_1 ~ 0x06 (Must set bit 6 to wake from sleep on power up)
+
+PWR_MGMT_2 ~ 0x07 (2:0 Disables Gyro Axes / 5:3 Disables Accel Axes)
+
+ACCEL_XOUT_H ~ 0x2D
+ACCEL_XOUT_L ~ 0x2E
+
+ACCEL_YOUT_H ~ 0x2F
+ACCEL_YOUT_L ~ 0x30
+
+ACCEL_ZOUT_H ~ 0x31
+ACCEL_ZOUT_L ~ 0x32
+
+GYRO_XOUT_H ~ 0x33
+GYRO_XOUT_L ~ 0x34
+
+GYRO_YOUT_H ~ 0x35
+GYRO_YOUT_L ~ 0x36
+
+GYRO_ZOUT_H ~ 0x37
+GYRO_ZOUT_L ~ 0x38
+
+DATA_RDY_STATUS ~ 0x74 Set when sequence controller kicks on sensor data load (Bit 3:0)
+
+USER_REG_BANK_SEL ~ 0x7F (Bits 5:4)
+
+USER BANK 1
+~~~~~~~~~~~
+
+SELF_TEST_X_GYRO ~ 0x02
+SELF_TEST_Y_GYRO ~ 0x03
+SELF_TEST_Z_GYRO ~ 0x04
